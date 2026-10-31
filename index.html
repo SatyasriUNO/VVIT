@@ -193,6 +193,20 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .log i{width:8px;height:8px;border-radius:50%;margin-top:6px;background:var(--ink-2)}
 .log .warn i{background:var(--signal)} .log .good i{background:var(--safe)} .log .bad i{background:var(--hazard)} .log .info i{background:var(--path)}
 .note{font-size:12.5px;color:var(--ink-2);margin:10px 0 0}
+.loc-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 14px;font-size:13.5px;color:var(--ink-2)}
+.loc-line b{color:var(--ink)}
+.mk-poi{width:24px;height:24px;border-radius:50%;border:2px solid #fff;color:#fff;font:800 12px/20px var(--font);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.mk-me{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 6px rgba(26,115,232,.25),0 2px 6px rgba(0,0,0,.35)}
+.poi-list{display:grid;gap:6px;max-height:330px;overflow:auto}
+.poi{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:7px 9px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--paper);cursor:pointer;text-align:left}
+.poi:hover{border-color:var(--ink-2)}
+.poi .ic{width:24px;height:24px;border-radius:50%;color:#fff;font:800 12px/24px var(--font);text-align:center}
+.poi .nm{font-weight:650;font-size:13.5px;line-height:1.3}
+.poi .ty{font-size:12px;color:var(--ink-2)}
+.poi .d{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.poi-filter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.poi-filter button{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer}
+.poi-filter button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 footer{padding:28px 0 40px;color:var(--ink-2);font-size:13.5px}
 
 @media (max-width:1100px){
@@ -235,6 +249,13 @@ footer{padding:28px 0 40px;color:var(--ink-2);font-size:13.5px}
     <button class="btn demo" id="demoBtn" type="button">▶ Demo</button>
   </div>
   <p class="hint" id="srcHint">Live data comes from the Raspberry Pi 5 on the drone or ground station. No Pi nearby? Press <b>Demo</b> to run a simulated mission.</p>
+
+  <div class="loc-line">
+    <span>📍 Area: <b id="locName">Locating…</b> <span class="mono" id="locCoords"></span></span>
+    <button class="tbtn" id="myLocBtn" type="button">Use my location (GPS)</button>
+    <button class="tbtn" id="homeLocBtn" type="button">Back to VVCE</button>
+    <span id="locMsg"></span>
+  </div>
 
   <!-- DEMO PANEL -->
   <section class="demo-panel" id="demoPanel" aria-labelledby="demoTitle">
@@ -299,6 +320,10 @@ footer{padding:28px 0 40px;color:var(--ink-2);font-size:13.5px}
         <span><i class="sw box" style="background:rgba(31,138,112,.18);border:1.5px dashed #1F8A70"></i>Wi-Fi coverage</span>
         <span><i class="sw" style="background:#7C4DCC"></i>LoRa mesh link</span>
         <span><i class="sw box" style="background:#E8491D"></i>Survivor</span>
+        <span><i class="sw box" style="background:#C62828;border-radius:50%"></i>Hospital / clinic</span>
+        <span><i class="sw box" style="background:#1565C0;border-radius:50%"></i>Police</span>
+        <span><i class="sw box" style="background:#EF6C00;border-radius:50%"></i>Fire station</span>
+        <label style="display:inline-flex;gap:5px;align-items:center;cursor:pointer"><input type="checkbox" id="poiChk" checked> Show nearby help</label>
       </div>
     </section>
 
@@ -335,6 +360,14 @@ footer{padding:28px 0 40px;color:var(--ink-2);font-size:13.5px}
     </section>
 
     <div class="side" style="grid-template-columns:1fr">
+      <section class="panel" aria-labelledby="poiTitle">
+        <div class="ph"><h2 id="poiTitle">Nearby help</h2><span class="meta" id="poiMeta">—</span></div>
+        <div class="pb">
+          <div class="poi-filter" id="poiFilter"></div>
+          <div class="poi-list" id="poiList"><p class="empty">Loading from OpenStreetMap…</p></div>
+          <p class="note">Hospitals, clinics, police and fire stations within 2.5 km, from OpenStreetMap. Tap one to show it on the map. Rescue teams use these to plan where survivors are taken.</p>
+        </div>
+      </section>
       <section class="panel" aria-labelledby="survTitle">
         <div class="ph"><h2 id="survTitle">Survivors located</h2><span class="meta" id="survCount">0</span></div>
         <div class="pb"><div class="surv-list" id="survList"><p class="empty">None yet.</p></div>
@@ -361,7 +394,11 @@ footer{padding:28px 0 40px;color:var(--ink-2);font-size:13.5px}
      (leave "" to use the address typed in the box).
    ===================================================================== */
 const CONFIG = {
-  home: { lat: 13.01080, lon: 77.70470, name: "Demo area" },
+  // Map centre. On load the page looks up `place` on OpenStreetMap for the exact
+  // position; lat/lon below is only the fallback if there is no internet.
+  home: { lat: 12.33660, lon: 76.61760, name: "Vidyavardhaka College of Engineering, Mysuru",
+          place: "Vidyavardhaka College of Engineering, Mysuru" },
+  nearbyRadiusM: 2500,    // how far to look for hospitals, police, fire stations
   defaultSource: "",
   pollMs: 1000,
   wifiSwitchDbm: -75,     // Wi-Fi weaker than this -> switch to LoRa
@@ -1243,12 +1280,167 @@ $("fitBtn").addEventListener("click", () => {
 });
 
 /* =====================================================================
+   LOCATION: college lookup, phone/laptop GPS, nearby help (OpenStreetMap)
+   No API keys needed. Browser GPS works on https pages (the Vercel site)
+   and on localhost, not on a plain http://<ip> address.
+   ===================================================================== */
+const POI_TYPES = {
+  hospital:     { label: "Hospital",     letter: "H", color: "#C62828" },
+  clinic:       { label: "Clinic",       letter: "+", color: "#AD1457" },
+  police:       { label: "Police",       letter: "P", color: "#1565C0" },
+  fire_station: { label: "Fire station", letter: "F", color: "#EF6C00" },
+  assembly:     { label: "Assembly point", letter: "A", color: "#2E7D32" }
+};
+const LOC = { pois: [], filter: "all", me: null, layer: null };
+const DEFAULT_HOME = { ...CONFIG.home };
+function locMsg(t, bad) { const m = $("locMsg"); m.textContent = t || ""; m.style.color = bad ? "var(--hazard)" : "var(--ink-2)"; }
+function showLoc() {
+  $("locName").textContent = CONFIG.home.name;
+  $("locCoords").textContent = `${CONFIG.home.lat.toFixed(5)}, ${CONFIG.home.lon.toFixed(5)}`;
+}
+async function fetchJSON(url, opts = {}, ms = 9000) {
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { ...opts, signal: ctl.signal }); if (!r.ok) throw new Error(r.status); return await r.json(); }
+  finally { clearTimeout(to); }
+}
+/* exact college position from OpenStreetMap (Nominatim search) */
+async function lookupPlace(q) {
+  const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=in&q=" + encodeURIComponent(q);
+  const j = await fetchJSON(url, { headers: { "Accept-Language": "en" } }, 6000);
+  if (Array.isArray(j) && j[0]) return { lat: +j[0].lat, lon: +j[0].lon };
+  return null;
+}
+/* street name for a GPS position (Nominatim reverse) */
+async function placeName(lat, lon) {
+  try {
+    const j = await fetchJSON(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=${lat}&lon=${lon}`, { headers: { "Accept-Language": "en" } }, 6000);
+    const a = j.address || {};
+    return [j.name || a.amenity || a.road, a.suburb || a.neighbourhood, a.city || a.town || a.village].filter(Boolean).join(", ") || "Your location";
+  } catch (e) { return "Your location"; }
+}
+/* hospitals, clinics, police, fire stations, assembly points around home (Overpass) */
+async function loadNearby() {
+  const { lat, lon } = CONFIG.home, r = CONFIG.nearbyRadiusM;
+  $("poiList").innerHTML = `<p class="empty">Loading from OpenStreetMap…</p>`; $("poiMeta").textContent = "—";
+  const q = `[out:json][timeout:20];(nwr(around:${r},${lat},${lon})[amenity~"^(hospital|clinic|police|fire_station)$"];nwr(around:${r},${lat},${lon})[emergency=assembly_point];);out center 120;`;
+  const hosts = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+  let data = null;
+  for (const h of hosts) {
+    try { data = await fetchJSON(h, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } }, 20000); break; }
+    catch (e) { /* try the next server */ }
+  }
+  if (!data) { LOC.pois = []; $("poiList").innerHTML = `<p class="empty">Could not reach OpenStreetMap (needs internet). Try again later.</p>`; drawPois(); return; }
+  const seen = new Set();
+  LOC.pois = (data.elements || []).map(el => {
+    const t = el.tags || {}, la = el.lat ?? el.center?.lat, lo = el.lon ?? el.center?.lon;
+    const type = t.emergency === "assembly_point" ? "assembly" : (t.amenity === "doctors" ? "clinic" : t.amenity);
+    if (!POI_TYPES[type] || !num(la)) return null;
+    const name = t.name || t["name:en"] || POI_TYPES[type].label;
+    const key = type + name + la.toFixed(4);
+    if (seen.has(key)) return null; seen.add(key);
+    const [e, n] = llToEN(la, lo);
+    const d = Math.hypot(e, n), brg = (Math.atan2(e, n) * 180 / Math.PI + 360) % 360;
+    const dir = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(brg / 45) % 8];
+    return { type, name, lat: la, lon: lo, d, dir, phone: t.phone || t["contact:phone"] || "", emergency: t.emergency === "yes" };
+  }).filter(Boolean).sort((a, b) => a.d - b.d);
+  renderPois(); drawPois();
+}
+function renderPois() {
+  const counts = {}; LOC.pois.forEach(p => counts[p.type] = (counts[p.type] || 0) + 1);
+  $("poiMeta").textContent = `${LOC.pois.length} within ${(CONFIG.nearbyRadiusM / 1000).toFixed(1)} km`;
+  $("poiFilter").innerHTML = [["all", `All (${LOC.pois.length})`], ...Object.keys(POI_TYPES).filter(k => counts[k]).map(k => [k, `${POI_TYPES[k].label} (${counts[k]})`])]
+    .map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${LOC.filter === k}">${esc(l)}</button>`).join("");
+  const list = LOC.pois.filter(p => LOC.filter === "all" || p.type === LOC.filter);
+  $("poiList").innerHTML = list.length ? list.slice(0, 60).map(p => {
+    const T = POI_TYPES[p.type];
+    return `<button class="poi" type="button" data-lat="${p.lat}" data-lon="${p.lon}">
+      <span class="ic" style="background:${T.color}">${T.letter}</span>
+      <span><span class="nm">${esc(p.name)}</span><br><span class="ty">${T.label}${p.emergency ? " · emergency dept" : ""}${p.phone ? " · " + esc(p.phone) : ""}</span></span>
+      <span class="d">${p.d < 1000 ? p.d.toFixed(0) + " m" : (p.d / 1000).toFixed(1) + " km"} ${p.dir}</span></button>`;
+  }).join("") : `<p class="empty">Nothing of this type found nearby on OpenStreetMap.</p>`;
+}
+function drawPois() {
+  if (!MAP.ok) return;
+  if (!LOC.layer) LOC.layer = L.layerGroup();
+  LOC.layer.clearLayers();
+  LOC.pois.forEach(p => {
+    const T = POI_TYPES[p.type];
+    L.marker([p.lat, p.lon], { icon: L.divIcon({ className: "", html: `<div class="mk-poi" style="background:${T.color}">${T.letter}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] }) })
+      .bindPopup(`<b>${esc(p.name)}</b><br>${T.label}${p.emergency ? " (emergency)" : ""}<br>${p.d < 1000 ? p.d.toFixed(0) + " m" : (p.d / 1000).toFixed(2) + " km"} ${p.dir} of the base${p.phone ? "<br>☎ " + esc(p.phone) : ""}`)
+      .addTo(LOC.layer);
+  });
+  if ($("poiChk").checked) LOC.layer.addTo(MAP.m); else MAP.m.removeLayer(LOC.layer);
+}
+$("poiChk").addEventListener("change", drawPois);
+$("poiFilter").addEventListener("click", (e) => { const b = e.target.closest("button[data-f]"); if (b) { LOC.filter = b.dataset.f; renderPois(); } });
+$("poiList").addEventListener("click", (e) => {
+  const b = e.target.closest(".poi"); if (!b || !MAP.ok) return;
+  if (!$("poiChk").checked) { $("poiChk").checked = true; drawPois(); }
+  MAP.m.setView([+b.dataset.lat, +b.dataset.lon], 17);
+  LOC.layer.eachLayer(l => { const ll = l.getLatLng(); if (Math.abs(ll.lat - b.dataset.lat) < 1e-7 && Math.abs(ll.lng - b.dataset.lon) < 1e-7) l.openPopup(); });
+  $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+/* move the whole operation (map, demo, nearby search) to a new base */
+function setHome(lat, lon, name) {
+  CONFIG.home.lat = lat; CONFIG.home.lon = lon; CONFIG.home.name = name;
+  showLoc();
+  if (SIM) startDemo(SIM.scen);
+  else if (MAP.ok) MAP.m.setView([lat, lon], 17);
+  loadNearby();
+}
+function drawMe(lat, lon, acc) {
+  if (!MAP.ok) return;
+  if (!LOC.me) {
+    LOC.me = L.layerGroup([
+      L.circle([lat, lon], { radius: acc, color: "#1a73e8", weight: 1, fillOpacity: .12 }),
+      L.marker([lat, lon], { zIndexOffset: 1500, icon: L.divIcon({ className: "", html: '<div class="mk-me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) }).bindTooltip("You are here")
+    ]).addTo(MAP.m);
+  } else {
+    LOC.me.eachLayer(l => { l.setLatLng([lat, lon]); if (l.setRadius) l.setRadius(acc); });
+  }
+}
+$("myLocBtn").addEventListener("click", () => {
+  if (!window.isSecureContext) { locMsg("Browser GPS needs the https:// (Vercel) site or localhost. It is blocked on http://<ip> pages.", true); return; }
+  if (!navigator.geolocation) { locMsg("This browser has no location service.", true); return; }
+  locMsg("Getting your position… allow location when the browser asks.");
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    locMsg(`Accuracy ±${accuracy.toFixed(0)} m${accuracy > 200 ? " (laptops use Wi-Fi, not GPS; a phone is more accurate)" : ""}`);
+    drawMe(lat, lon, accuracy);
+    const name = await placeName(lat, lon);
+    setHome(lat, lon, name);
+    try { localStorage.setItem("saadaxa-home", JSON.stringify({ lat, lon, name })); } catch (e) {}
+  }, (err) => {
+    locMsg(err.code === 1 ? "Location permission was refused. Allow it in the browser's address bar, then try again." : "Could not get a position. Move near a window or try a phone.", true);
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+});
+$("homeLocBtn").addEventListener("click", async () => {
+  try { localStorage.removeItem("saadaxa-home"); } catch (e) {}
+  if (LOC.me && MAP.ok) { MAP.m.removeLayer(LOC.me); LOC.me = null; }
+  locMsg("");
+  let p = null; try { p = await lookupPlace(DEFAULT_HOME.place); } catch (e) {}
+  setHome(p ? p.lat : DEFAULT_HOME.lat, p ? p.lon : DEFAULT_HOME.lon, DEFAULT_HOME.name);
+});
+/* first load: saved GPS position, else look up the college */
+async function resolveHome() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("saadaxa-home") || "null"); } catch (e) {}
+  if (saved && num(saved.lat) && num(saved.lon)) { CONFIG.home.lat = saved.lat; CONFIG.home.lon = saved.lon; CONFIG.home.name = saved.name || "Your location"; return; }
+  try { const p = await lookupPlace(CONFIG.home.place); if (p) { CONFIG.home.lat = p.lat; CONFIG.home.lon = p.lon; } } catch (e) {}
+}
+
+/* =====================================================================
    START
    ===================================================================== */
 initMap();
 renderScenarioButtons();
 render({ source: "none" });
-(() => {
+showLoc();
+(async () => {
+  await resolveHome();
+  showLoc();
+  if (MAP.ok) MAP.m.setView([CONFIG.home.lat, CONFIG.home.lon], 17);
+  loadNearby();
   let saved = "";
   try { saved = localStorage.getItem("saadaxa-src") || ""; } catch (e) {}
   const start = saved || CONFIG.defaultSource;
