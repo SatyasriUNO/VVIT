@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SAADAXA — Live Operations</title>
+<meta name="description" content="SAADAXA live operations: Raspberry Pi 5 sensor data, LoRa link, mesh nodes, live map and GPS / Wi-Fi switching demo.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+:root{
+  --paper:#E8EEEA; --paper-2:#DCE4DF; --card:#F6F9F7;
+  --ink:#14213D; --ink-2:#44506B; --line:#B9C6BF; --grid:#CFD9D3;
+  --signal:#E8491D; --hazard:#9E2A3A; --safe:#1F8A70; --path:#2D5BA8; --warn:#B7791F;
+  --on-signal:#FFFFFF;
+  --radius-s:4px; --radius-m:10px;
+  --maxw:1440px;
+  --font:"Archivo","Helvetica Neue",Arial,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1A26; --paper-2:#152333; --card:#182A3C;
+    --ink:#E6EDF3; --ink-2:#A9B7C6; --line:#2E4458; --grid:#1D3144;
+    --signal:#FF6A3D; --hazard:#E0667A; --safe:#3CC49E; --path:#7EA6F0; --warn:#E3B341;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1A26; --paper-2:#152333; --card:#182A3C;
+  --ink:#E6EDF3; --ink-2:#A9B7C6; --line:#2E4458; --grid:#1D3144;
+  --signal:#FF6A3D; --hazard:#E0667A; --safe:#3CC49E; --path:#7EA6F0; --warn:#E3B341;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* header */
+header.top{position:sticky;top:0;z-index:1100;background:color-mix(in srgb,var(--paper) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:14px;height:58px}
+.brand{font-weight:800;font-stretch:112%;font-size:21px;letter-spacing:.03em;text-decoration:none;display:flex;align-items:center;gap:10px}
+.brand .dot{width:10px;height:10px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 4px color-mix(in srgb,var(--signal) 25%,transparent)}
+.top .spacer{flex:1}
+.tbtn{border:1px solid var(--line);background:var(--card);border-radius:var(--radius-s);padding:7px 11px;font-size:14px;cursor:pointer;text-decoration:none;white-space:nowrap}
+.tbtn:hover{border-color:var(--ink-2)}
+
+/* source bar */
+.sourcebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:16px 0 12px}
+.sourcebar h1{font-size:24px;margin:0 12px 0 0;font-weight:800;font-stretch:108%}
+.conn{display:inline-flex;align-items:center;gap:8px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:13.5px;font-weight:650}
+.conn i{width:9px;height:9px;border-radius:50%;background:var(--ink-2)}
+.conn.ok i{background:var(--safe);box-shadow:0 0 0 3px color-mix(in srgb,var(--safe) 30%,transparent)}
+.conn.bad i{background:var(--hazard)}
+.conn.demo i{background:var(--signal);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.srcform{display:flex;gap:6px;flex:1 1 320px;min-width:0}
+.srcform input{flex:1;min-width:0;border:1px solid var(--line);background:var(--card);border-radius:var(--radius-s);padding:8px 10px;font-family:var(--mono);font-size:13px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius-s);padding:8px 14px;font-weight:650;font-size:14px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--ink-2)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.demo{background:var(--signal);color:var(--on-signal);border-color:var(--signal);font-size:15px;padding:9px 18px}
+.btn.demo:hover{filter:brightness(1.07)}
+.btn.on{background:var(--hazard);color:#fff;border-color:var(--hazard)}
+.hint{font-size:13px;color:var(--ink-2);margin:0 0 12px}
+.hint.warn{color:var(--hazard);font-weight:600}
+
+/* demo panel */
+.demo-panel{display:none;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-m);padding:16px;margin-bottom:14px}
+body.demo-mode .demo-panel{display:block}
+.demo-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.demo-head h2{font-size:18px;margin:0}
+.badge{font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:4px;border:1.5px solid var(--signal);color:var(--signal)}
+.scen{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.scen button{text-align:left;border:1.5px solid var(--line);background:var(--paper);border-radius:var(--radius-m);padding:12px 13px;cursor:pointer;display:grid;gap:4px}
+.scen button:hover{border-color:var(--ink-2)}
+.scen button[aria-pressed="true"]{border-color:var(--signal);background:color-mix(in srgb,var(--signal) 9%,var(--card));box-shadow:0 0 0 3px color-mix(in srgb,var(--signal) 18%,transparent)}
+.scen .no{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.scen .tt{font-weight:800;font-size:16px}
+.scen .ds{font-size:13px;color:var(--ink-2);line-height:1.4}
+.demo-ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.demo-ctrl select{border:1px solid var(--line);background:var(--card);border-radius:var(--radius-s);padding:8px}
+.demo-ctrl .sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+.rule{margin-top:12px;font-size:13.5px;color:var(--ink-2);border-left:3px solid var(--signal);padding:4px 0 4px 10px}
+.rule b{color:var(--ink)}
+.progress{height:4px;background:var(--paper-2);border-radius:2px;margin-top:12px;overflow:hidden}
+.progress span{display:block;height:100%;width:0;background:var(--signal);transition:width .2s linear}
+
+/* mode switches */
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.mode{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-m);padding:12px 14px;transition:background .3s,border-color .3s}
+.mode .lbl{grid-column:1/-1;font-size:11.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+.mode .ic{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;background:var(--paper-2)}
+.mode .ic svg{width:22px;height:22px}
+.mode .val{font-size:20px;font-weight:800;font-stretch:105%;line-height:1.1}
+.mode .val small{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2);font-stretch:100%}
+.mode.good{border-color:color-mix(in srgb,var(--safe) 60%,var(--line))}
+.mode.good .ic{background:color-mix(in srgb,var(--safe) 18%,transparent);color:var(--safe)}
+.mode.alt{border-color:var(--signal);background:color-mix(in srgb,var(--signal) 7%,var(--card))}
+.mode.alt .ic{background:color-mix(in srgb,var(--signal) 18%,transparent);color:var(--signal)}
+.mode.flash{animation:flash .9s ease-out 2}
+@keyframes flash{30%{box-shadow:0 0 0 6px color-mix(in srgb,var(--signal) 35%,transparent)}}
+
+/* layout */
+.ops{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:start}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-m);overflow:hidden}
+.ph{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ph h2{font-size:16px;margin:0;font-weight:750}
+.ph .meta{font-size:12.5px;color:var(--ink-2)}
+.pb{padding:12px 14px}
+.side{display:grid;gap:14px}
+
+/* map */
+.map-wrap{position:relative}
+#map{height:600px;background:var(--paper-2)}
+.map-banner{position:absolute;z-index:500;top:10px;left:56px;right:10px;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
+.chip{pointer-events:auto;display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--card) 94%,transparent);border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.chip.ok{color:var(--safe)}
+.chip.lost{color:#fff;background:var(--hazard);border-color:var(--hazard)}
+.chip.lora{color:#fff;background:var(--signal);border-color:var(--signal)}
+.map-msg{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:var(--ink-2);z-index:400}
+.map-legend{display:flex;flex-wrap:wrap;gap:8px 16px;padding:10px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.map-legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:4px;border-radius:2px;display:inline-block}
+.sw.dash{background:repeating-linear-gradient(90deg,var(--signal) 0 5px,transparent 5px 8px)!important}
+.sw.box{height:12px;width:14px;border-radius:3px}
+.map-tools{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-2)}
+.map-tools label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+
+/* leaflet markers */
+.mk{display:grid;place-items:center}
+.mk-drone{width:30px;height:30px;border-radius:50%;background:var(--path);border:3px solid #fff;box-shadow:0 0 0 2px var(--path),0 3px 10px rgba(0,0,0,.35);color:#fff}
+.mk-drone svg{width:16px;height:16px;transition:transform .2s linear}
+.mk-ghost{width:22px;height:22px;border-radius:50%;border:2.5px dashed var(--signal);background:color-mix(in srgb,var(--signal) 25%,transparent)}
+.mk-node{min-width:34px;height:22px;padding:0 6px;border-radius:5px;font:700 11px/22px var(--mono);color:#fff;background:#44506B;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);white-space:nowrap;text-align:center}
+.mk-node.mapping{background:#2D5BA8}.mk-node.relay{background:#7C4DCC}.mk-node.aid{background:#1F8A70}.mk-node.gcs{background:#14213D}.mk-node.server{background:#14213D}
+.mk-node.offline{opacity:.45}
+.mk-surv{width:26px;height:26px}
+.mk-surv svg{width:26px;height:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
+.mk-anchor{width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:#14213D;color:#fff;font:800 13px/22px var(--font);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.leaflet-tooltip.mk-label::before{display:none}
+.mk-label{background:none;border:0;box-shadow:none;font:800 11px var(--font);color:#fff;text-shadow:0 1px 3px #000,0 0 2px #000;white-space:nowrap}
+.leaflet-container{font-family:var(--font)}
+.leaflet-popup-content{font-size:13px;line-height:1.45}
+.leaflet-popup-content b{font-size:14px}
+
+/* metrics */
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line)}
+.kv div{background:var(--card);padding:9px 12px;min-width:0}
+.kv dt{font-size:11.5px;color:var(--ink-2);font-weight:650;letter-spacing:.03em;text-transform:uppercase}
+.kv dd{margin:2px 0 0;font-size:17px;font-weight:750;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv dd small{font-size:11.5px;font-weight:400;color:var(--ink-2);font-family:var(--font)}
+.kv dd.na{color:var(--ink-2);font-weight:500;font-size:14px;font-family:var(--font)}
+.kv dd.good{color:var(--safe)} .kv dd.bad{color:var(--hazard)} .kv dd.mid{color:var(--warn)}
+.bar{height:5px;background:var(--paper-2);border-radius:3px;margin-top:5px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--safe);border-radius:3px;transition:width .4s}
+.spark{display:block;width:100%;height:84px}
+.spark-cap{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2);padding:0 2px}
+.payload{font-family:var(--mono);font-size:12.5px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-s);padding:7px 9px;margin-top:8px;word-break:break-all;min-height:34px}
+.video{display:flex;align-items:center;gap:10px;margin-top:10px;padding:9px 11px;border-radius:var(--radius-s);border:1px dashed var(--line);font-size:13.5px}
+.video.on{border-style:solid;border-color:var(--safe);color:var(--safe)}
+.video.off{color:var(--ink-2)}
+.video i{width:10px;height:10px;border-radius:50%;background:currentColor}
+
+/* lower */
+.lower{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;margin-top:14px}
+#meshSvg{display:block;width:100%;height:auto;background:var(--paper)}
+.tbl-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);background:var(--paper-2);font-weight:700}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:999px}
+.pill.on{background:color-mix(in srgb,var(--safe) 18%,transparent);color:var(--safe)}
+.pill.off{background:color-mix(in srgb,var(--hazard) 16%,transparent);color:var(--hazard)}
+.pill.busy{background:color-mix(in srgb,var(--signal) 16%,transparent);color:var(--signal)}
+.q-good{color:var(--safe)}.q-mid{color:var(--warn)}.q-bad{color:var(--hazard)}
+.surv-list{display:grid;gap:8px}
+.surv{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:var(--radius-s);padding:8px 10px;background:var(--paper);cursor:pointer;text-align:left}
+.surv:hover{border-color:var(--signal)}
+.surv .sid{font:800 13px var(--mono);color:#fff;background:var(--signal);border-radius:4px;padding:2px 6px}
+.surv .co{font-family:var(--mono);font-size:12.5px}
+.surv .sm{font-size:12px;color:var(--ink-2)}
+.empty{color:var(--ink-2);font-size:13.5px;padding:6px 0}
+.log{list-style:none;margin:0;padding:0;max-height:330px;overflow:auto;font-size:13px}
+.log li{display:grid;grid-template-columns:58px 10px 1fr;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.log time{font-family:var(--mono);color:var(--ink-2);font-size:12px}
+.log i{width:8px;height:8px;border-radius:50%;margin-top:6px;background:var(--ink-2)}
+.log .warn i{background:var(--signal)} .log .good i{background:var(--safe)} .log .bad i{background:var(--hazard)} .log .info i{background:var(--path)}
+.note{font-size:12.5px;color:var(--ink-2);margin:10px 0 0}
+footer{padding:28px 0 40px;color:var(--ink-2);font-size:13.5px}
+
+@media (max-width:1100px){
+  .ops{grid-template-columns:1fr}
+  .lower{grid-template-columns:1fr}
+  .side{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+}
+@media (max-width:760px){
+  .scen{grid-template-columns:1fr 1fr}
+  #map{height:440px}
+  .modes{grid-template-columns:1fr}
+  .wrap{padding:0 14px}
+  .sourcebar h1{width:100%}
+  .map-banner{left:50px}
+}
+@media (max-width:420px){.scen{grid-template-columns:1fr}.kv dd{font-size:15px}}
+@media (prefers-reduced-motion: reduce){.conn.demo i,.mode.flash{animation:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="dot" aria-hidden="true"></span>SAADAXA</a>
+    <span class="spacer"></span>
+    <a class="tbtn" href="index.html">← Main site</a>
+    <button class="tbtn" id="themeBtn" type="button">Dark mode</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- SOURCE BAR -->
+  <div class="sourcebar">
+    <h1>Live operations</h1>
+    <span class="conn" id="conn"><i></i><span id="connText">Not connected</span></span>
+    <form class="srcform" id="srcForm" autocomplete="off">
+      <input id="srcInput" type="text" placeholder="Raspberry Pi address, e.g. http://192.168.1.50:8000" aria-label="Raspberry Pi server address">
+      <button class="btn primary" type="submit" id="connectBtn">Connect</button>
+    </form>
+    <button class="btn demo" id="demoBtn" type="button">▶ Demo</button>
+  </div>
+  <p class="hint" id="srcHint">Live data comes from the Raspberry Pi 5 on the drone or ground station. No Pi nearby? Press <b>Demo</b> to run a simulated mission.</p>
+
+  <!-- DEMO PANEL -->
+  <section class="demo-panel" id="demoPanel" aria-labelledby="demoTitle">
+    <div class="demo-head">
+      <h2 id="demoTitle">Simulation</h2>
+      <span class="badge">Simulated data</span>
+      <span class="spacer" style="flex:1"></span>
+      <span class="mono" id="simClock" style="font-size:13px;color:var(--ink-2)">T+00:00</span>
+    </div>
+    <div class="scen" id="scenarios" role="group" aria-label="Choose a scenario"></div>
+    <div class="demo-ctrl">
+      <button class="btn primary" id="playBtn" type="button">Pause</button>
+      <button class="btn" id="restartBtn" type="button">↺ Restart</button>
+      <select id="speedSel" aria-label="Simulation speed">
+        <option value="4">4× speed</option>
+        <option value="8" selected>8× speed</option>
+        <option value="16">16× speed</option>
+      </select>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="jamGpsBtn" type="button" aria-pressed="false">Jam GPS now</button>
+      <button class="btn" id="cutWifiBtn" type="button" aria-pressed="false">Cut Wi-Fi now</button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="exitDemoBtn" type="button">Exit demo</button>
+    </div>
+    <div class="rule"><b>Automatic switching:</b> if the drone flies into an area with no GPS, it switches on its own to <b>anchored SLAM</b> navigation and to <b>LoRa</b> radio (no GPS + no Wi-Fi mode). If Wi-Fi drops below <b>−75 dBm</b>, it switches to LoRa. When the signals come back, it switches back.</div>
+    <div class="progress" aria-hidden="true"><span id="simProgress"></span></div>
+  </section>
+
+  <!-- MODE SWITCHES -->
+  <div class="modes" aria-live="polite">
+    <div class="mode" id="navMode">
+      <span class="lbl">Navigation</span>
+      <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="8"/></svg></span>
+      <span class="val" id="navVal">—<small>Waiting for data</small></span>
+    </div>
+    <div class="mode" id="linkMode">
+      <span class="lbl">Communication link</span>
+      <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor"/></svg></span>
+      <span class="val" id="linkVal">—<small>Waiting for data</small></span>
+    </div>
+  </div>
+
+  <div class="ops">
+    <!-- MAP -->
+    <section class="panel" aria-labelledby="mapTitle">
+      <div class="ph">
+        <h2 id="mapTitle">Mission map</h2>
+        <div class="map-tools">
+          <label><input type="checkbox" id="followChk"> Follow drone</label>
+          <button class="tbtn" id="fitBtn" type="button">Fit</button>
+        </div>
+      </div>
+      <div class="map-wrap">
+        <div id="map" role="application" aria-label="Mission map"></div>
+        <div class="map-banner" id="mapBanner"></div>
+        <div class="map-msg" id="mapMsg">The map needs an internet connection to load.<br>All other panels keep working.</div>
+      </div>
+      <div class="map-legend">
+        <span><i class="sw" style="background:#2D5BA8"></i>Drone (true path)</span>
+        <span><i class="sw dash"></i>SLAM estimate</span>
+        <span><i class="sw box" style="background:rgba(158,42,58,.45);border:1.5px solid #9E2A3A"></i>No GPS / no Wi-Fi area</span>
+        <span><i class="sw box" style="background:rgba(31,138,112,.18);border:1.5px dashed #1F8A70"></i>Wi-Fi coverage</span>
+        <span><i class="sw" style="background:#7C4DCC"></i>LoRa mesh link</span>
+        <span><i class="sw box" style="background:#E8491D"></i>Survivor</span>
+      </div>
+    </section>
+
+    <!-- SIDE -->
+    <div class="side">
+      <section class="panel" aria-labelledby="sensTitle">
+        <div class="ph"><h2 id="sensTitle">Sensors · Raspberry Pi 5</h2><span class="meta" id="sensAge">—</span></div>
+        <dl class="kv" id="sensorGrid"></dl>
+      </section>
+
+      <section class="panel" aria-labelledby="loraTitle">
+        <div class="ph"><h2 id="loraTitle">LoRa link · RYLR998</h2><span class="meta" id="loraRole">—</span></div>
+        <dl class="kv" id="loraGrid"></dl>
+        <div class="pb">
+          <svg class="spark" id="spark" viewBox="0 0 340 84" preserveAspectRatio="none" aria-label="Signal strength history"></svg>
+          <div class="spark-cap"><span><b style="color:#7C4DCC">━</b> LoRa RSSI</span><span><b style="color:#1F8A70">━</b> Wi-Fi RSSI</span><span><b style="color:#E8491D">┄</b> −75 dBm switch</span></div>
+          <div class="payload" id="lastPayload" title="Last LoRa packet">No packet yet</div>
+          <div class="video off" id="videoState"><i></i><span>Video feed: —</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="lower">
+    <section class="panel" aria-labelledby="meshTitle">
+      <div class="ph"><h2 id="meshTitle">Mesh network &amp; nodes</h2><span class="meta" id="meshMeta">—</span></div>
+      <svg id="meshSvg" viewBox="0 0 640 300" role="img" aria-label="Mesh network diagram"></svg>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr><th>Node</th><th>Role</th><th>Status</th><th>Route</th><th>Hops</th><th>RSSI</th><th>SNR</th><th>Battery</th><th>Last heard</th></tr></thead>
+          <tbody id="nodeBody"><tr><td colspan="9" class="empty">No nodes heard yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="side" style="grid-template-columns:1fr">
+      <section class="panel" aria-labelledby="survTitle">
+        <div class="ph"><h2 id="survTitle">Survivors located</h2><span class="meta" id="survCount">0</span></div>
+        <div class="pb"><div class="surv-list" id="survList"><p class="empty">None yet.</p></div>
+        <p class="note">Tap a survivor to show it on the map. Without GPS, the position comes from anchored SLAM and carries the error shown (±).</p></div>
+      </section>
+      <section class="panel" aria-labelledby="logTitle">
+        <div class="ph"><h2 id="logTitle">Event log</h2><span class="meta">Newest first</span></div>
+        <div class="pb"><ul class="log" id="eventLog"></ul></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap">SAADAXA · Six-Armed Aerial Disaster Assistance EXpeditionary Apparatus · Team MANTHAN, Cambridge Institute of Technology, Bengaluru</div></footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+/* =====================================================================
+   SETTINGS: the only part you may need to edit.
+   - home: centre of the demo area. Open Google Maps, right-click your
+     test ground, click the numbers at the top of the menu to copy them,
+     and paste them here (lat first, then lon).
+   - defaultSource: the Raspberry Pi address the page tries first
+     (leave "" to use the address typed in the box).
+   ===================================================================== */
+const CONFIG = {
+  home: { lat: 13.01080, lon: 77.70470, name: "Demo area" },
+  defaultSource: "",
+  pollMs: 1000,
+  wifiSwitchDbm: -75,     // Wi-Fi weaker than this -> switch to LoRa
+  wifiBackDbm: -72,       // Wi-Fi must be stronger than this to switch back
+  slamDriftPct: 1.4,      // SLAM drift, % of distance flown (measured 1.2-1.6 %)
+  loraFreqMHz: 865.0
+};
+
+/* ---------------------------------------------------------------------
+   Helpers
+   --------------------------------------------------------------------- */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const num = (v) => typeof v === "number" && isFinite(v);
+const fmt = (v, d = 1) => num(v) ? v.toFixed(d) : null;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const M_LAT = 111320;
+function enToLL(e, n, ref = CONFIG.home) {
+  return [ref.lat + n / M_LAT, ref.lon + e / (M_LAT * Math.cos(ref.lat * Math.PI / 180))];
+}
+function llToEN(lat, lon, ref = CONFIG.home) {
+  return [(lon - ref.lon) * M_LAT * Math.cos(ref.lat * Math.PI / 180), (lat - ref.lat) * M_LAT];
+}
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function inPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+const mmss = (s) => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
+function quality(rssi) {
+  if (!num(rssi)) return "";
+  return rssi > -95 ? "q-good" : rssi > -110 ? "q-mid" : "q-bad";
+}
+function qualityColor(rssi) {
+  if (!num(rssi)) return "#7C4DCC";
+  return rssi > -95 ? "#1F8A70" : rssi > -110 ? "#B7791F" : "#9E2A3A";
+}
+
+/* ---------------------------------------------------------------------
+   Theme
+   --------------------------------------------------------------------- */
+(() => {
+  const root = document.documentElement, btn = $("themeBtn");
+  const sysDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = () => root.dataset.theme || (sysDark() ? "dark" : "light");
+  const label = () => { btn.textContent = cur() === "dark" ? "Light mode" : "Dark mode"; };
+  try { const t = localStorage.getItem("saadaxa-theme"); if (t) root.dataset.theme = t; } catch (e) {}
+  label();
+  btn.addEventListener("click", () => {
+    root.dataset.theme = cur() === "dark" ? "light" : "dark";
+    try { localStorage.setItem("saadaxa-theme", root.dataset.theme); } catch (e) {}
+    label();
+  });
+})();
+
+/* =====================================================================
+   MAP (Leaflet)
+   ===================================================================== */
+const MAP = { ok: false };
+function initMap() {
+  if (typeof L === "undefined") { $("mapMsg").style.display = "grid"; return; }
+  const m = L.map("map", { zoomControl: true, attributionControl: true }).setView([CONFIG.home.lat, CONFIG.home.lon], 17);
+  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 20, maxNativeZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" });
+  const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 20, maxNativeZoom: 19, attribution: "© OpenStreetMap contributors" });
+  sat.addTo(m);
+  L.control.layers({ "Satellite": sat, "Street map": osm }, null, { position: "topright" }).addTo(m);
+  L.control.scale({ imperial: false }).addTo(m);
+  MAP.m = m;
+  MAP.zones = L.layerGroup().addTo(m);
+  MAP.links = L.layerGroup().addTo(m);
+  MAP.trails = L.layerGroup().addTo(m);
+  MAP.nodes = L.layerGroup().addTo(m);
+  MAP.survs = L.layerGroup().addTo(m);
+  MAP.packets = L.layerGroup().addTo(m);
+  MAP.nodeMarkers = {};
+  MAP.survMarkers = {};
+  MAP.ok = true;
+  MAP.trueTrail = L.polyline([], { color: "#2D5BA8", weight: 3, opacity: .95 }).addTo(MAP.trails);
+  MAP.estTrail = L.polyline([], { color: "#E8491D", weight: 3, dashArray: "6 6", opacity: .95 }).addTo(MAP.trails);
+  MAP.errCircle = L.circle([0, 0], { radius: 1, color: "#E8491D", weight: 1.5, fillOpacity: .12, dashArray: "4 4" });
+  MAP.ghost = L.marker([0, 0], { icon: L.divIcon({ className: "", html: '<div class="mk mk-ghost"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false });
+  MAP.anchor = L.marker([0, 0], { icon: L.divIcon({ className: "", html: '<div class="mk-anchor">A</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) })
+    .bindTooltip("Anchor: last good GPS fix (SLAM origin)", { direction: "top" });
+  MAP.drone = L.marker([CONFIG.home.lat, CONFIG.home.lon], { zIndexOffset: 1000, icon: L.divIcon({ className: "",
+    html: '<div class="mk mk-drone"><svg id="droneArrow" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 19 21 12 17 5 21z"/></svg></div>', iconSize: [30, 30], iconAnchor: [15, 15] }) });
+  // tiles that fail (no internet) leave a plain background; the overlays still draw
+}
+function droneIconHeading(deg) {
+  const a = document.getElementById("droneArrow");
+  if (a) a.style.transform = `rotate(${deg}deg)`;
+}
+function setNodeMarker(n) {
+  if (!MAP.ok || !num(n.lat) || !num(n.lon)) return;
+  const cls = `mk-node ${n.role || ""} ${n.online === false ? "offline" : ""}`;
+  let mk = MAP.nodeMarkers[n.id];
+  const html = `<div class="${cls}">${esc(n.id)}</div>`;
+  if (!mk) {
+    mk = L.marker([n.lat, n.lon], { icon: L.divIcon({ className: "", html, iconSize: null, iconAnchor: [18, 11] }) }).addTo(MAP.nodes);
+    mk._html = html;
+    MAP.nodeMarkers[n.id] = mk;
+  } else {
+    mk.setLatLng([n.lat, n.lon]);
+    if (mk._html !== html) { mk.setIcon(L.divIcon({ className: "", html, iconSize: null, iconAnchor: [18, 11] })); mk._html = html; }
+  }
+  const tip = `${esc(n.label || n.id)} · ${esc(roleName(n.role))}${num(n.rssi) ? ` · ${n.rssi.toFixed(0)} dBm` : ""}`;
+  if (mk.getTooltip()) mk.setTooltipContent(tip); else mk.bindTooltip(tip, { direction: "top", offset: [0, -10] });
+}
+const PIN_SVG = '<svg viewBox="0 0 26 34"><path d="M13 33C10 28 1 19 1 12a12 12 0 0 1 24 0c0 7-9 16-12 21Z" fill="#E8491D" stroke="#fff" stroke-width="2"/><circle cx="13" cy="12" r="4.5" fill="#fff"/></svg>';
+function setSurvivorMarker(s) {
+  if (!MAP.ok || !num(s.lat) || !num(s.lon)) return;
+  if (MAP.survMarkers[s.id]) return;
+  const mk = L.marker([s.lat, s.lon], { zIndexOffset: 800, icon: L.divIcon({ className: "", html: `<div class="mk mk-surv">${PIN_SVG}</div>`, iconSize: [26, 34], iconAnchor: [13, 33], popupAnchor: [0, -30] }) })
+    .bindPopup(survPopup(s)).bindTooltip(esc(s.id), { permanent: true, direction: "right", className: "mk-label", offset: [8, -18] });
+  const grp = L.layerGroup([mk]);
+  if (num(s.err_m) && s.err_m > 0.5) grp.addLayer(L.circle([s.lat, s.lon], { radius: s.err_m, color: "#E8491D", weight: 1, fillOpacity: .1, dashArray: "3 4" }));
+  grp.addTo(MAP.survs);
+  MAP.survMarkers[s.id] = mk;
+}
+function survPopup(s) {
+  return `<b>${esc(s.id)}</b><br><span class="mono">${fmt(s.lat, 6)}, ${fmt(s.lon, 6)}</span><br>`
+    + `Position: ${s.err_m > 0.5 ? "SLAM estimate ± " + s.err_m.toFixed(1) + " m" : "GPS (RTK)"}<br>`
+    + (num(s.conf) ? `Detection score: ${(s.conf * 100).toFixed(0)}%${STATE.source === "demo" ? " (demo value)" : ""}<br>` : "")
+    + (s.via ? `Sent over: ${esc(s.via)}` : "");
+}
+function clearMapDynamic() {
+  if (!MAP.ok) return;
+  MAP.zones.clearLayers(); MAP.links.clearLayers(); MAP.nodes.clearLayers(); MAP.survs.clearLayers(); MAP.packets.clearLayers();
+  MAP.nodeMarkers = {}; MAP.survMarkers = {};
+  MAP.trueTrail.setLatLngs([]); MAP.estTrail.setLatLngs([]);
+  [MAP.errCircle, MAP.ghost, MAP.anchor].forEach(l => MAP.m.removeLayer(l));
+}
+
+/* =====================================================================
+   SHARED STATE: the live Pi data and the demo both fill this shape,
+   and the same render() draws it.
+   ===================================================================== */
+let STATE = { source: "none" };
+const HIST = { lora: [], wifi: [] };
+function pushHist(s) {
+  HIST.lora.push(num(s.lora?.rssi) ? s.lora.rssi : null);
+  HIST.wifi.push(num(s.link?.wifi_rssi) ? s.link.wifi_rssi : null);
+  if (HIST.lora.length > 90) { HIST.lora.shift(); HIST.wifi.shift(); }
+}
+function roleName(r) {
+  return { mapping: "Mapping drone", relay: "Relay drone", aid: "Aid drone", gcs: "Local GCS", server: "Central server" }[r] || (r || "Node");
+}
+
+/* ---------- mode tiles + map banner ---------- */
+let lastNav = null, lastLink = null;
+function renderModes(s) {
+  const nav = s.nav?.mode || null, link = s.link?.active || null;
+  const navEl = $("navMode"), linkEl = $("linkMode");
+  navEl.classList.remove("good", "alt"); linkEl.classList.remove("good", "alt");
+  if (nav === "GNSS") {
+    navEl.classList.add("good");
+    $("navVal").innerHTML = `GPS (RTK)<small>${s.sensors?.gps?.sats ?? "—"} satellites · accuracy ~0.02 m</small>`;
+  } else if (nav === "SLAM") {
+    navEl.classList.add("alt");
+    $("navVal").innerHTML = `No GPS → Anchored SLAM<small>Drift ${fmt(s.nav?.drift_m, 1) ?? "—"} m · error ±${fmt(s.nav?.err_m, 1) ?? "—"} m (≈${CONFIG.slamDriftPct}% of distance)</small>`;
+  } else {
+    $("navVal").innerHTML = `${nav ? esc(nav) : "—"}<small>${nav ? "No position fix yet" : "Waiting for data"}</small>`;
+  }
+  if (link === "wifi") {
+    linkEl.classList.add("good");
+    $("linkVal").innerHTML = `Wi-Fi<small>${fmt(s.link?.wifi_rssi, 0) ?? "—"} dBm · video + telemetry · LoRa on standby</small>`;
+  } else if (link === "lora") {
+    linkEl.classList.add("alt");
+    $("linkVal").innerHTML = `No Wi-Fi → LoRa ${CONFIG.loraFreqMHz} MHz<small>Coordinates + telemetry only · ${s.lora?.hops ? s.lora.hops + " hop" + (s.lora.hops > 1 ? "s" : "") + " to GCS" : "mesh"}</small>`;
+  } else {
+    $("linkVal").innerHTML = `—<small>Waiting for data</small>`;
+  }
+  if (lastNav && nav && nav !== lastNav) { navEl.classList.remove("flash"); void navEl.offsetWidth; navEl.classList.add("flash"); }
+  if (lastLink && link && link !== lastLink) { linkEl.classList.remove("flash"); void linkEl.offsetWidth; linkEl.classList.add("flash"); }
+  lastNav = nav; lastLink = link;
+
+  const chips = [];
+  if (nav === "GNSS") chips.push(`<span class="chip ok">✓ GPS</span>`);
+  else if (nav === "SLAM") chips.push(`<span class="chip lost">✗ GPS lost → SLAM</span>`);
+  if (link === "wifi") chips.push(`<span class="chip ok">✓ Wi-Fi ${fmt(s.link?.wifi_rssi, 0) ?? ""} dBm</span>`);
+  else if (link === "lora") chips.push(`<span class="chip lora">✗ Wi-Fi → LoRa</span>`);
+  if (s.source === "demo") chips.push(`<span class="chip">SIMULATION</span>`);
+  if (s.simulated && s.source === "live") chips.push(`<span class="chip">Pi test input</span>`);
+  $("mapBanner").innerHTML = chips.join("");
+}
+
+/* ---------- sensors ---------- */
+function kvItem(label, value, unit, cls, bar) {
+  if (value === null || value === undefined || value === "") return `<div><dt>${label}</dt><dd class="na">Not connected</dd></div>`;
+  return `<div><dt>${label}</dt><dd class="${cls || ""}">${value}${unit ? ` <small>${unit}</small>` : ""}</dd>${bar !== undefined ? `<div class="bar"><span style="width:${clamp(bar, 0, 100)}%;background:${bar < 25 ? "var(--hazard)" : bar < 50 ? "var(--warn)" : "var(--safe)"}"></span></div>` : ""}</div>`;
+}
+function renderSensors(s) {
+  const z = s.sensors || {}, g = z.gps || {};
+  const temp = z.cpu_temp_c;
+  const fixTxt = g.fix === undefined || g.fix === null ? null : (g.fix >= 6 ? "RTK fixed" : g.fix === 5 ? "RTK float" : g.fix >= 3 ? "3D fix" : g.fix === 2 ? "2D fix" : "No fix");
+  $("sensorGrid").innerHTML = [
+    kvItem("CPU temp", fmt(temp, 1), "°C", num(temp) ? (temp > 75 ? "bad" : temp > 65 ? "mid" : "") : ""),
+    kvItem("CPU load", fmt(z.cpu_load_pct, 0), "%", "", undefined),
+    kvItem("Memory used", fmt(z.mem_pct, 0), "%"),
+    kvItem("Battery", num(z.battery_v) ? `${z.battery_v.toFixed(2)}` : null, num(z.battery_pct) ? `V · ${z.battery_pct.toFixed(0)}%` : "V", num(z.battery_pct) && z.battery_pct < 25 ? "bad" : "", num(z.battery_pct) ? z.battery_pct : undefined),
+    kvItem("GPS", fixTxt, num(g.sats) ? `${g.sats} sats${num(g.hdop) ? " · HDOP " + g.hdop.toFixed(1) : ""}` : "", g.fix >= 3 ? "good" : g.fix !== undefined && g.fix !== null ? "bad" : ""),
+    kvItem("Altitude", fmt(z.alt_m, 1), "m AGL"),
+    kvItem("Roll / Pitch", num(z.roll) && num(z.pitch) ? `${z.roll.toFixed(1)}° / ${z.pitch.toFixed(1)}°` : null, ""),
+    kvItem("Heading", fmt(z.yaw, 0), "°"),
+    kvItem("Depth (D435i)", fmt(z.depth_min_m, 1), "m nearest"),
+    kvItem("Wi-Fi signal", fmt(s.link?.wifi_rssi, 0), "dBm", num(s.link?.wifi_rssi) ? (s.link.wifi_rssi > CONFIG.wifiSwitchDbm ? "good" : "bad") : "")
+  ].join("");
+  $("sensAge").textContent = s.source === "demo" ? "simulated" : (num(s.age_s) ? `updated ${s.age_s.toFixed(0)} s ago` : "live");
+}
+
+/* ---------- LoRa ---------- */
+function renderLora(s) {
+  const l = s.lora || {};
+  $("loraGrid").innerHTML = [
+    kvItem("RSSI", fmt(l.rssi, 0), "dBm", quality(l.rssi).replace("q-", "")),
+    kvItem("SNR", fmt(l.snr, 1), "dB"),
+    kvItem("Packets in / out", num(l.rx) ? `${l.rx} / ${l.tx ?? 0}` : null, ""),
+    kvItem("Packet loss", fmt(l.loss_pct, 1), "%"),
+    kvItem("Frequency", num(l.freq_mhz) ? l.freq_mhz.toFixed(1) : null, `MHz${num(l.sf) ? " · SF" + l.sf : ""}`),
+    kvItem("Last packet", num(l.last_rx_age_s) ? l.last_rx_age_s.toFixed(1) : null, "s ago")
+  ].join("");
+  $("loraRole").textContent = s.link?.active === "lora" ? "PRIMARY link" : s.link?.active === "wifi" ? "standby (heartbeat)" : (l.connected === false ? "module not found" : "—");
+  $("lastPayload").textContent = l.last_payload ? `RX ▸ ${l.last_payload}` : "No packet yet";
+  const v = $("videoState");
+  if (s.link?.active === "wifi") { v.className = "video on"; v.innerHTML = `<i></i><span>Video feed: streaming over Wi-Fi</span>`; }
+  else if (s.link?.active === "lora") { v.className = "video off"; v.innerHTML = `<i></i><span>Video feed: paused. LoRa carries coordinates only, not video.</span>`; }
+  else { v.className = "video off"; v.innerHTML = `<i></i><span>Video feed: —</span>`; }
+  drawSpark();
+}
+function drawSpark() {
+  const W = 340, H = 84, lo = -125, hi = -35;
+  const y = (v) => H - ((clamp(v, lo, hi) - lo) / (hi - lo)) * H;
+  const line = (arr) => {
+    let d = "", pen = false;
+    arr.forEach((v, i) => {
+      if (v === null) { pen = false; return; }
+      const x = (i / 89) * W;
+      d += (pen ? "L" : "M") + x.toFixed(1) + " " + y(v).toFixed(1) + " ";
+      pen = true;
+    });
+    return d;
+  };
+  const ty = y(CONFIG.wifiSwitchDbm).toFixed(1);
+  $("spark").innerHTML =
+    `<rect width="${W}" height="${H}" fill="var(--paper)"/>`
+    + [-50, -75, -100].map(v => `<text x="3" y="${(y(v) - 3).toFixed(1)}" font-size="9" fill="var(--ink-2)" font-family="monospace">${v}</text>`).join("")
+    + `<line x1="0" x2="${W}" y1="${ty}" y2="${ty}" stroke="#E8491D" stroke-dasharray="4 4" stroke-width="1"/>`
+    + `<path d="${line(HIST.wifi)}" fill="none" stroke="#1F8A70" stroke-width="2" vector-effect="non-scaling-stroke"/>`
+    + `<path d="${line(HIST.lora)}" fill="none" stroke="#7C4DCC" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+}
+
+/* ---------- mesh ---------- */
+function renderMesh(s) {
+  const nodes = (s.nodes || []).filter(n => n);
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const online = nodes.filter(n => n.online !== false).length;
+  $("meshMeta").textContent = nodes.length ? `${online} of ${nodes.length} online` : "—";
+
+  // table
+  $("nodeBody").innerHTML = nodes.length ? nodes.map(n => {
+    const st = n.online === false ? `<span class="pill off">offline</span>` : n.task ? `<span class="pill busy">${esc(n.task)}</span>` : `<span class="pill on">online</span>`;
+    return `<tr><td><b>${esc(n.id)}</b></td><td>${esc(roleName(n.role))}</td><td>${st}</td>`
+      + `<td>${n.via ? esc(n.id) + " → " + esc(n.route || n.via) : "—"}</td>`
+      + `<td class="num">${n.hops ?? "—"}</td>`
+      + `<td class="num ${quality(n.rssi)}">${num(n.rssi) ? n.rssi.toFixed(0) + " dBm" : (n.link === "lan" ? "LAN" : "—")}</td>`
+      + `<td class="num">${num(n.snr) ? n.snr.toFixed(1) + " dB" : "—"}</td>`
+      + `<td class="num">${num(n.battery_pct) ? n.battery_pct.toFixed(0) + "%" : "—"}</td>`
+      + `<td class="num">${num(n.age_s) ? n.age_s.toFixed(0) + " s ago" : "—"}</td></tr>`;
+  }).join("") : `<tr><td colspan="9" class="empty">No nodes heard yet.</td></tr>`;
+
+  // diagram: place nodes by real position when known, else on a ring
+  const W = 640, H = 300, pad = 46;
+  const pos = {};
+  const located = nodes.filter(n => num(n.lat) && num(n.lon));
+  if (located.length >= 2) {
+    const ref = { lat: located[0].lat, lon: located[0].lon };
+    const pts = located.map(n => [n.id, llToEN(n.lat, n.lon, ref)]);
+    const xs = pts.map(p => p[1][0]), ys = pts.map(p => p[1][1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const sc = Math.min((W - 2 * pad) / Math.max(maxX - minX, 1), (H - 2 * pad) / Math.max(maxY - minY, 1));
+    const ox = (W - (maxX - minX) * sc) / 2, oy = (H - (maxY - minY) * sc) / 2;
+    pts.forEach(([id, [x, yy]]) => { pos[id] = [ox + (x - minX) * sc, H - (oy + (yy - minY) * sc)]; });
+  }
+  const rest = nodes.filter(n => !pos[n.id]);
+  rest.forEach((n, i) => {
+    const a = (i / Math.max(rest.length, 1)) * Math.PI * 2 - Math.PI / 2;
+    pos[n.id] = [W / 2 + Math.cos(a) * 110, H / 2 + Math.sin(a) * 100];
+  });
+  const color = { mapping: "#2D5BA8", relay: "#7C4DCC", aid: "#1F8A70", gcs: "#14213D", server: "#14213D" };
+  let svg = `<rect width="${W}" height="${H}" fill="var(--paper)"/>`;
+  for (let gx = 0; gx < W; gx += 40) svg += `<line x1="${gx}" x2="${gx}" y1="0" y2="${H}" stroke="var(--grid)" stroke-width="1"/>`;
+  for (let gy = 0; gy < H; gy += 40) svg += `<line x1="0" x2="${W}" y1="${gy}" y2="${gy}" stroke="var(--grid)" stroke-width="1"/>`;
+  nodes.forEach(n => {
+    if (!n.via || !pos[n.via] || !pos[n.id]) return;
+    const [x1, y1] = pos[n.id], [x2, y2] = pos[n.via];
+    const c = n.link === "lan" ? "var(--ink-2)" : qualityColor(n.rssi);
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${n.online === false ? 1.5 : 3}" ${n.link === "lan" || n.online === false ? 'stroke-dasharray="6 5"' : ""} opacity=".9"/>`;
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const lbl = n.link === "lan" ? "LAN" : num(n.rssi) ? n.rssi.toFixed(0) + " dBm" : "";
+    if (lbl) svg += `<rect x="${mx - 27}" y="${my - 9}" width="54" height="17" rx="3" fill="var(--card)" stroke="${c}"/><text x="${mx}" y="${my + 3.5}" text-anchor="middle" font-size="10.5" font-family="monospace" fill="var(--ink)">${lbl}</text>`;
+  });
+  const placed = [];
+  nodes.forEach(n => {
+    const [x, y] = pos[n.id];
+    const crowded = placed.some(([px, py]) => Math.hypot(px - x, py - y) < 70);
+    placed.push([x, y]);
+    const c = color[n.role] || "#44506B";
+    const r = n.role === "gcs" || n.role === "server" ? 16 : 14;
+    svg += `<g opacity="${n.online === false ? .45 : 1}">`
+      + (n.role === "gcs" || n.role === "server"
+        ? `<rect x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" rx="4" fill="${c}" stroke="var(--card)" stroke-width="3"/>`
+        : `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" stroke="var(--card)" stroke-width="3"/>`)
+      + `<text x="${x}" y="${y + 3.8}" text-anchor="middle" font-size="10.5" font-weight="800" fill="#fff" font-family="monospace">${esc(n.id).slice(0, 4)}</text>`
+      + (crowded ? "" : `<text x="${x}" y="${y + r + 14}" text-anchor="middle" font-size="11" fill="var(--ink-2)">${esc(roleName(n.role))}</text>`) + `</g>`;
+  });
+  if (!nodes.length) svg += `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="14" fill="var(--ink-2)">Waiting for mesh nodes…</text>`;
+  $("meshSvg").innerHTML = svg;
+
+  // map markers + links
+  if (MAP.ok) {
+    MAP.links.clearLayers();
+    nodes.forEach(n => {
+      if (n.id === s.drone?.id && STATE.source === "demo") return;
+      setNodeMarker(n);
+      const p = byId[n.via];
+      if (p && num(n.lat) && num(p.lat)) {
+        L.polyline([[n.lat, n.lon], [p.lat, p.lon]], { color: n.link === "lan" ? "#44506B" : qualityColor(n.rssi), weight: 2.5, opacity: .85, dashArray: n.link === "lan" ? "6 6" : null }).addTo(MAP.links);
+      }
+    });
+    Object.keys(MAP.nodeMarkers).forEach(id => { if (!byId[id]) { MAP.nodes.removeLayer(MAP.nodeMarkers[id]); delete MAP.nodeMarkers[id]; } });
+  }
+}
+
+/* ---------- survivors ---------- */
+let survSig = "";
+function renderSurvivors(s) {
+  const list = s.survivors || [];
+  $("survCount").textContent = list.length;
+  const sig = list.map(x => x.id + x.lat).join("|");
+  if (sig === survSig) return;
+  survSig = sig;
+  $("survList").innerHTML = list.length ? list.slice().reverse().map(x => `
+    <button class="surv" type="button" data-lat="${x.lat}" data-lon="${x.lon}" data-id="${esc(x.id)}">
+      <span class="sid">${esc(x.id)}</span>
+      <span><span class="co">${fmt(x.lat, 6)}, ${fmt(x.lon, 6)}</span><br><span class="sm">${x.err_m > 0.5 ? "SLAM ±" + x.err_m.toFixed(1) + " m" : "GPS ±0.1 m"} · via ${esc(x.via || "—")}</span></span>
+      <span class="sm">${num(x.conf) ? (x.conf * 100).toFixed(0) + "%" : ""}</span>
+    </button>`).join("") : `<p class="empty">None yet.</p>`;
+  list.forEach(setSurvivorMarker);
+}
+$("survList").addEventListener("click", (e) => {
+  const b = e.target.closest(".surv");
+  if (!b || !MAP.ok) return;
+  MAP.m.setView([+b.dataset.lat, +b.dataset.lon], 19);
+  const mk = MAP.survMarkers[b.dataset.id];
+  if (mk) mk.openPopup();
+  $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+/* ---------- events ---------- */
+function renderEvents(s) {
+  const ev = (s.events || []).slice(-60).reverse();
+  $("eventLog").innerHTML = ev.length ? ev.map(e => `<li class="${esc(e.kind || "info")}"><time>${esc(e.t)}</time><i></i><span>${esc(e.text)}</span></li>`).join("")
+    : `<li class="info"><time></time><i></i><span>No events yet.</span></li>`;
+}
+
+/* ---------- drone on the map ---------- */
+let fittedOnce = false;
+function renderDrone(s) {
+  if (!MAP.ok) return;
+  const d = s.drone;
+  if (!d || !num(d.lat) || !num(d.lon)) { MAP.m.removeLayer(MAP.drone); return; }
+  if (!MAP.m.hasLayer(MAP.drone)) MAP.drone.addTo(MAP.m);
+  MAP.drone.setLatLng([d.lat, d.lon]);
+  droneIconHeading(d.heading || 0);
+  const dtip = `${esc(d.id || "Drone")} · ${fmt(s.sensors?.alt_m, 0) ?? "—"} m`;
+  if (MAP.drone.getTooltip()) MAP.drone.setTooltipContent(dtip); else MAP.drone.bindTooltip(dtip, { direction: "top", offset: [0, -14] });
+  const slam = s.nav?.mode === "SLAM";
+  if (slam && num(d.est_lat)) {
+    if (!MAP.m.hasLayer(MAP.ghost)) MAP.ghost.addTo(MAP.m);
+    if (!MAP.m.hasLayer(MAP.errCircle)) MAP.errCircle.addTo(MAP.m);
+    MAP.ghost.setLatLng([d.est_lat, d.est_lon]);
+    MAP.errCircle.setLatLng([d.est_lat, d.est_lon]).setRadius(Math.max(s.nav.err_m || 1, 1));
+  } else {
+    MAP.m.removeLayer(MAP.ghost); MAP.m.removeLayer(MAP.errCircle);
+  }
+  if (s.nav?.anchor && num(s.nav.anchor.lat)) {
+    if (!MAP.m.hasLayer(MAP.anchor)) MAP.anchor.addTo(MAP.m);
+    MAP.anchor.setLatLng([s.nav.anchor.lat, s.nav.anchor.lon]);
+  } else MAP.m.removeLayer(MAP.anchor);
+  if (s.source === "live") {
+    const tr = MAP.trueTrail.getLatLngs();
+    const last = tr[tr.length - 1];
+    if (!last || last.lat !== d.lat || last.lng !== d.lon) { MAP.trueTrail.addLatLng([d.lat, d.lon]); if (tr.length > 2000) tr.shift(); }
+    if (!fittedOnce) { MAP.m.setView([d.lat, d.lon], 18); fittedOnce = true; }
+  }
+  if ($("followChk").checked) MAP.m.panTo([d.lat, d.lon], { animate: false });
+}
+
+function render(s) {
+  STATE = s;
+  renderModes(s);
+  renderSensors(s);
+  renderLora(s);
+  renderMesh(s);
+  renderSurvivors(s);
+  renderEvents(s);
+  renderDrone(s);
+}
+
+/* =====================================================================
+   LIVE MODE: read /api/state from the Raspberry Pi server
+   ===================================================================== */
+const LIVE = { timer: null, base: "", fails: 0 };
+function setConn(cls, text) { const c = $("conn"); c.className = "conn " + cls; $("connText").textContent = text; }
+function normaliseBase(v) {
+  v = (v || "").trim().replace(/\/+$/, "");
+  if (v && !/^https?:\/\//i.test(v)) v = "http://" + v;
+  // a plain address like 192.168.1.50 or 100.x.x.x gets the server port added
+  if (/^http:\/\/[^\/:]+$/i.test(v)) v += ":8000";
+  return v;
+}
+function startLive(base) {
+  stopDemo();
+  LIVE.base = base;
+  LIVE.fails = 0;
+  clearInterval(LIVE.timer);
+  clearMapDynamic(); survSig = ""; fittedOnce = false; HIST.lora.length = 0; HIST.wifi.length = 0;
+  const hint = $("srcHint");
+  if (location.protocol === "https:" && /^http:\/\//i.test(base)) {
+    hint.className = "hint warn";
+    hint.innerHTML = "Browsers block an <b>http://</b> address on this <b>https://</b> page. Use the Pi's <b>https://…trycloudflare.com</b> tunnel link, or open this page from the Pi itself (http://&lt;pi-address&gt;:8000/live.html).";
+  } else {
+    hint.className = "hint";
+    hint.innerHTML = "Reading live data from the Raspberry Pi 5 every second.";
+  }
+  setConn("", "Connecting…");
+  const tick = async () => {
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 2500);
+    try {
+      const r = await fetch(base + "/api/state", { cache: "no-store", signal: ctl.signal });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const s = await r.json();
+      s.source = "live";
+      LIVE.fails = 0;
+      setConn("ok", s.simulated ? "Pi connected (test input)" : "Raspberry Pi connected");
+      pushHist(s);
+      render(s);
+    } catch (e) {
+      LIVE.fails++;
+      setConn("bad", LIVE.fails > 2 ? "Pi not reachable" : "Retrying…");
+    } finally { clearTimeout(to); }
+  };
+  tick();
+  LIVE.timer = setInterval(tick, CONFIG.pollMs);
+}
+function stopLive() { clearInterval(LIVE.timer); LIVE.timer = null; }
+
+$("srcForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("srcInput").value.trim();
+  const base = v ? normaliseBase(v) : "";
+  try { localStorage.setItem("saadaxa-src", v); } catch (err) {}
+  if (!v && !servedByPi()) { $("srcHint").className = "hint warn"; $("srcHint").textContent = "Type the Raspberry Pi address first, or press Demo."; return; }
+  startLive(base);
+});
+function servedByPi() {
+  return /^https?:$/.test(location.protocol) && !/vercel\.app$|github\.io$/i.test(location.hostname) && location.port === "8000";
+}
+
+/* =====================================================================
+   DEMO MODE: simulated mission with automatic GPS / Wi-Fi switching
+   Coordinates are metres East (e) and North (n) of CONFIG.home.
+   ===================================================================== */
+const SCENARIOS = [
+  { key: "gps", no: "01", title: "With GPS", desc: "Clear sky, RTK GPS. The drone flies into a collapsed area with no GPS and switches by itself." },
+  { key: "nogps", no: "02", title: "Without GPS", desc: "GPS is lost soon after take-off. The drone anchors to its last fix, flies on SLAM and talks over LoRa." },
+  { key: "wifi", no: "03", title: "With Wi-Fi", desc: "Wi-Fi carries video and telemetry. Inside the no-signal area it falls back to LoRa automatically." },
+  { key: "nowifi", no: "04", title: "Without Wi-Fi", desc: "Network is down. Only LoRa: survivor coordinates hop through the relay drone to the GCS." }
+];
+const GEO = {
+  gcs: [0, -18], server: [-85, -62], launch: [0, 0],
+  zone: [[8, 92], [118, 84], [128, 176], [34, 188], [-4, 142]],      // no GPS + no Wi-Fi (collapsed buildings)
+  area: [[-152, 18], [152, 18], [152, 242], [-152, 242]],
+  wifiRange: 160,                                                      // metres from the GCS router
+  survivors: [[-92, 31], [58, 110], [96, 151], [-38, 191], [122, 229]],
+  confs: [0.94, 0.88, 0.91, 0.86, 0.9],
+  parkA3: [-34, -28], parkA4: [-18, -30], d2c: [-245, 130]
+};
+function buildPath() {
+  const p = [GEO.launch.slice(), [-140, 30]];
+  const rows = [30, 70, 110, 150, 190, 230];
+  rows.forEach((n, i) => {
+    const xs = i % 2 === 0 ? [-140, 140] : [140, -140];
+    p.push([xs[0], n], [xs[1], n]);
+  });
+  p.push(GEO.launch.slice());
+  // remove consecutive duplicates
+  return p.filter((q, i) => i === 0 || dist(q, p[i - 1]) > 0.1);
+}
+const PATH = buildPath();
+const PATH_LEN = PATH.reduce((a, q, i) => i ? a + dist(q, PATH[i - 1]) : 0, 0);
+
+let SIM = null;
+let rafId = null, lastFrame = 0;
+function newSim(scen) {
+  return {
+    scen, t: 0, speed: +$("speedSel").value, running: true, done: false,
+    seg: 1, pos: PATH[0].slice(), est: PATH[0].slice(), errM: 0.02, travelled: 0, heading: 0, hover: 0,
+    gpsOk: true, gpsGoodFor: 99, link: "wifi", nav: "GNSS", wifiBadFor: 0, wifiGoodFor: 0,
+    anchor: null, distSinceAnchor: 0, driftAng: rnd(0, Math.PI * 2), drift: [0, 0],
+    jamGps: false, cutWifi: false,
+    battery: 98, rx: 0, tx: 0, lost: 0, lastTelem: 0, lastBeat: 0,
+    found: [], survivors: [], events: [], packets: [], nextSurv: 1,
+    loraRssi: null, loraSnr: null, hops: 1, wifiRssi: -50, lastPayload: "",
+    nodes: {
+      D1: { id: "D1", role: "mapping", pos: PATH[0].slice(), batt: 98 },
+      D2: { id: "D2", role: "mapping", pos: [GEO.d2c[0] + 45, GEO.d2c[1]], ang: 0, batt: 91 },
+      R5: { id: "R5", role: "relay", pos: [-10, 60], batt: 95 },
+      A3: { id: "A3", role: "aid", pos: GEO.parkA3.slice(), park: GEO.parkA3, batt: 100, state: "idle" },
+      A4: { id: "A4", role: "aid", pos: GEO.parkA4.slice(), park: GEO.parkA4, batt: 100, state: "idle" },
+      GCS: { id: "GCS", role: "gcs", pos: GEO.gcs.slice(), batt: null },
+      SRV: { id: "SRV", role: "server", pos: GEO.server.slice(), batt: null }
+    },
+    aidQueue: [], trailTrue: [], trailEst: []
+  };
+}
+function simEvent(kind, text) {
+  SIM.events.push({ t: "T+" + mmss(SIM.t), kind, text });
+  if (SIM.events.length > 120) SIM.events.shift();
+}
+/* radio models (simple log-distance, good enough to show behaviour) */
+function loraRssi(a, b) {
+  const d = Math.max(dist(a, b), 1);
+  let r = -46 - 26 * Math.log10(d);
+  if (inPoly(a, GEO.zone) || inPoly(b, GEO.zone)) r -= 9;    // rubble blocks signal
+  return r + rnd(-1.5, 1.5);
+}
+const snrOf = (rssi) => clamp((rssi + 117) / 2.6, -14, 11) + rnd(-0.6, 0.6);
+function wifiRssiAt(p) {
+  const sc = SIM.scen;
+  if (SIM.cutWifi || sc === "nowifi") return -100 + rnd(-2, 2);
+  if (inPoly(p, GEO.zone)) return -94 + rnd(-3, 3);
+  if (sc === "wifi") return -56 - 0.04 * dist(p, GEO.gcs) + rnd(-2.5, 2.5);   // Wi-Fi mesh via relay: strong
+  const d = Math.max(dist(p, GEO.gcs), 1);
+  return -26.5 - 22 * Math.log10(d) + rnd(-2, 2);
+}
+function gpsAt(p) {
+  if (SIM.jamGps) return false;
+  if (SIM.scen === "nogps") return dist(p, GEO.launch) < 22;     // only a fix on the launch pad
+  return !inPoly(p, GEO.zone);
+}
+/* route from a node to the GCS: direct, or through relay R5 if better */
+function routeOf(id) {
+  const N = SIM.nodes, me = N[id];
+  const direct = loraRssi(me.pos, N.GCS.pos);
+  if (id === "R5") return { via: "GCS", rssi: direct, hops: 1, path: [me.pos, N.GCS.pos] };
+  const toR = loraRssi(me.pos, N.R5.pos), rToG = loraRssi(N.R5.pos, N.GCS.pos);
+  const viaBottleneck = Math.min(toR, rToG);
+  if (direct > -104 || direct >= viaBottleneck) return { via: "GCS", rssi: direct, hops: 1, path: [me.pos, N.GCS.pos] };
+  return { via: "R5", rssi: toR, hops: 2, path: [me.pos, N.R5.pos, N.GCS.pos] };
+}
+function sendPacket(path, big) {
+  SIM.packets.push({ path: path.map(p => p.slice()), t0: performance.now(), dur: 650 * (path.length - 1), big });
+}
+
+function simStep(dt) {
+  const S = SIM, N = S.nodes;
+  S.t += dt;
+  /* --- move D1 along the lawn-mower path --- */
+  if (S.hover > 0) S.hover -= dt;
+  else if (!S.done) {
+    let left = 5 * dt;          // 5 m/s cruise
+    while (left > 0 && S.seg < PATH.length) {
+      const tgt = PATH[S.seg], d = dist(S.pos, tgt);
+      if (d <= left) { S.travelled += d; if (S.anchor) S.distSinceAnchor += d; S.pos = tgt.slice(); left -= d; S.seg++; }
+      else {
+        const k = left / d;
+        S.heading = (Math.atan2(tgt[0] - S.pos[0], tgt[1] - S.pos[1]) * 180 / Math.PI + 360) % 360;
+        S.pos = [S.pos[0] + (tgt[0] - S.pos[0]) * k, S.pos[1] + (tgt[1] - S.pos[1]) * k];
+        S.travelled += left; if (S.anchor) S.distSinceAnchor += left; left = 0;
+      }
+    }
+    if (S.seg >= PATH.length && !S.done) {
+      S.done = true;
+      simEvent("good", `Mission complete. ${S.survivors.length} survivors located, drone back on the launch pad.`);
+    }
+  }
+  N.D1.pos = S.pos.slice();
+  S.battery = clamp(S.battery - dt * 0.06, 5, 100);
+  N.D1.batt = S.battery;
+
+  /* --- navigation: GPS or anchored SLAM --- */
+  const gpsNow = gpsAt(S.pos);
+  if (gpsNow) S.gpsGoodFor += dt; else S.gpsGoodFor = 0;
+  if (S.nav === "GNSS" && !gpsNow) {
+    S.nav = "SLAM";
+    S.anchor = S.pos.slice(); S.distSinceAnchor = 0; S.driftAng = rnd(0, Math.PI * 2);
+    const ll = enToLL(...S.anchor);
+    simEvent("warn", `GPS lost at ${ll[0].toFixed(5)}, ${ll[1].toFixed(5)}. Last good fix saved as anchor; switched to SLAM navigation.`);
+  } else if (S.nav === "SLAM" && gpsNow && S.gpsGoodFor > 2) {
+    const corr = Math.hypot(...S.drift);
+    S.nav = "GNSS"; S.anchor = null; S.distSinceAnchor = 0; S.drift = [0, 0];
+    simEvent("good", `GPS back. SLAM drift of ${corr.toFixed(1)} m corrected; navigation back on GPS.`);
+  }
+  if (S.nav === "SLAM") {
+    S.driftAng += rnd(-0.08, 0.08) * dt;
+    const mag = (CONFIG.slamDriftPct / 100) * S.distSinceAnchor;
+    S.drift = [Math.cos(S.driftAng) * mag, Math.sin(S.driftAng) * mag];
+  }
+  S.est = [S.pos[0] + S.drift[0], S.pos[1] + S.drift[1]];
+  S.errM = S.nav === "SLAM" ? 0.3 + 0.016 * S.distSinceAnchor : 0.02;
+
+  /* --- link: Wi-Fi or LoRa. Rule: no GPS here => treat area as down, use LoRa --- */
+  S.wifiRssi = wifiRssiAt(S.pos);
+  // hold times stop the link flipping when the signal hovers at the threshold
+  S.wifiBadFor = S.wifiRssi < CONFIG.wifiSwitchDbm ? S.wifiBadFor + dt : 0;
+  S.wifiGoodFor = S.wifiRssi > CONFIG.wifiBackDbm ? S.wifiGoodFor + dt : 0;
+  const wantLora = S.nav === "SLAM" || S.wifiBadFor >= 1.5;
+  const backOk = S.nav === "GNSS" && S.wifiGoodFor >= 4;
+  if (S.link === "wifi" && wantLora) {
+    S.link = "lora";
+    simEvent("warn", S.nav === "SLAM"
+      ? "No GPS in this area, so it is treated as infrastructure-down: switched to LoRa (coordinates + telemetry only)."
+      : `Wi-Fi fell to ${S.wifiRssi.toFixed(0)} dBm (below ${CONFIG.wifiSwitchDbm} dBm): switched to LoRa.`);
+  } else if (S.link === "lora" && backOk) {
+    S.link = "wifi";
+    simEvent("good", `Wi-Fi back at ${S.wifiRssi.toFixed(0)} dBm: video and full telemetry restored; LoRa on standby.`);
+  }
+
+  /* --- other drones --- */
+  N.D2.ang += dt * (5 / 45);
+  N.D2.pos = [GEO.d2c[0] + Math.cos(N.D2.ang) * 45, GEO.d2c[1] + Math.sin(N.D2.ang) * 45];
+  N.D2.batt = clamp(N.D2.batt - dt * 0.05, 5, 100);
+  // relay keeps the mesh connected: hovers between D1 and the GCS
+  const rt = [S.pos[0] * 0.5, clamp(S.pos[1] * 0.55, 20, 130)];
+  const rd = dist(N.R5.pos, rt);
+  if (rd > 1) { const k = Math.min(1, (4 * dt) / rd); N.R5.pos = [N.R5.pos[0] + (rt[0] - N.R5.pos[0]) * k, N.R5.pos[1] + (rt[1] - N.R5.pos[1]) * k]; }
+  N.R5.batt = clamp(N.R5.batt - dt * 0.05, 5, 100);
+  ["A3", "A4"].forEach(id => aidStep(N[id], dt));
+
+  /* --- detection --- */
+  GEO.survivors.forEach((sp, i) => {
+    if (S.found.includes(i) || dist(S.pos, sp) > 18) return;
+    S.found.push(i);
+    S.hover = 10;          // hover 10 s to confirm and refine
+    const est = [sp[0] + S.drift[0] + rnd(-0.4, 0.4), sp[1] + S.drift[1] + rnd(-0.4, 0.4)];
+    const ll = enToLL(...est);
+    const id = "S-" + String(S.nextSurv++).padStart(2, "0");
+    const via = S.link === "wifi" ? "Wi-Fi (photo + coordinates)" : `LoRa (${routeOf("D1").hops} hop${routeOf("D1").hops > 1 ? "s" : ""})`;
+    const surv = { id, lat: ll[0], lon: ll[1], conf: GEO.confs[i], err_m: S.errM, via, en: est };
+    S.survivors.push(surv);
+    S.aidQueue.push(surv);
+    const payload = `S,${id.slice(2)},${ll[0].toFixed(6)},${ll[1].toFixed(6)},${GEO.confs[i].toFixed(2)}`;
+    if (S.link === "lora") { const r = routeOf("D1"); sendPacket(r.path, true); S.tx++; S.lastPayload = payload + `  (${payload.length} bytes)`; }
+    simEvent("bad", `Survivor ${id} confirmed (RGB + depth). Sent over ${via}${S.nav === "SLAM" ? `, position ±${S.errM.toFixed(1)} m from SLAM` : ""}.`);
+  });
+
+  /* --- LoRa traffic --- */
+  const r = routeOf("D1");
+  S.loraRssi = r.rssi; S.loraSnr = snrOf(r.rssi); S.hops = r.hops;
+  const every = S.link === "lora" ? 2 : 6;      // telemetry when primary, heartbeat on standby
+  if (S.t - S.lastTelem > every) {
+    S.lastTelem = S.t; S.tx++;
+    const pLoss = r.rssi < -115 ? 0.25 : r.rssi < -105 ? 0.07 : 0.01;
+    if (Math.random() < pLoss) { S.lost++; }
+    else {
+      S.rx++;
+      const ll = enToLL(...S.est);
+      S.lastPayload = S.link === "lora"
+        ? `T,1,${ll[0].toFixed(6)},${ll[1].toFixed(6)},30,${S.battery.toFixed(0)}`
+        : `H,1,${S.battery.toFixed(0)}`;
+      if (S.link === "lora") sendPacket(r.path, false);
+    }
+  }
+  /* trails */
+  const lastT = S.trailTrue[S.trailTrue.length - 1];
+  if (!lastT || dist(lastT, S.pos) > 2) {
+    S.trailTrue.push(S.pos.slice());
+    S.trailEst.push(S.nav === "SLAM" ? S.est.slice() : null);
+  }
+}
+function aidStep(a, dt) {
+  const S = SIM;
+  if (a.state === "idle" && S.aidQueue.length && a.batt > 30) {
+    a.target = S.aidQueue.shift(); a.state = "outbound";
+    simEvent("info", `Aid drone ${a.id} launched with a 200 g kit to ${a.target.id}.`);
+  }
+  const goTo = (p, sp) => { const d = dist(a.pos, p); if (d < 0.5) return true; const k = Math.min(1, (sp * dt) / d); a.pos = [a.pos[0] + (p[0] - a.pos[0]) * k, a.pos[1] + (p[1] - a.pos[1]) * k]; return false; };
+  if (a.state === "outbound" && goTo(a.target.en, 7)) { a.state = "drop"; a.wait = 6; }
+  else if (a.state === "drop") { a.wait -= dt; if (a.wait <= 0) { a.state = "return"; simEvent("good", `Aid drone ${a.id} dropped the kit at ${a.target.id}.`); } }
+  else if (a.state === "return" && goTo(a.park, 8)) { a.state = "idle"; a.batt = clamp(a.batt - 12, 5, 100); }
+  if (a.state !== "idle") a.batt = clamp(a.batt - dt * 0.07, 5, 100);
+}
+
+/* convert the simulation into the same STATE shape the Pi sends */
+function simToState() {
+  const S = SIM, N = S.nodes;
+  const ll = enToLL(...S.pos), est = enToLL(...S.est);
+  const nodes = Object.values(N).map(n => {
+    const p = enToLL(...n.pos);
+    let via = null, rssi = null, hops = null, link = null, route = null;
+    if (n.id === "SRV") { via = "GCS"; link = "lan"; hops = 1; route = "GCS"; }
+    else if (n.id !== "GCS") {
+      const r = routeOf(n.id);
+      via = r.via; rssi = r.rssi; hops = r.hops; route = r.hops > 1 ? "R5 → GCS" : "GCS";
+    }
+    const task = n.state && n.state !== "idle" ? { outbound: "flying to drop", drop: "dropping kit", return: "returning" }[n.state] : null;
+    return { id: n.id, role: n.role, lat: p[0], lon: p[1], via, route, rssi, snr: num(rssi) ? snrOf(rssi) : null, hops, link,
+      battery_pct: n.batt, age_s: rnd(0.2, 2.5), online: true, task, label: n.id };
+  });
+  const jitter = (v, a) => v + rnd(-a, a);
+  return {
+    source: "demo", ts: Date.now(),
+    drone: { id: "D1", lat: ll[0], lon: ll[1], est_lat: est[0], est_lon: est[1], heading: S.heading },
+    nav: { mode: S.nav, drift_m: Math.hypot(...S.drift), err_m: S.errM, anchor: S.anchor ? (() => { const a = enToLL(...S.anchor); return { lat: a[0], lon: a[1] }; })() : null },
+    link: { active: S.link, wifi_rssi: S.wifiRssi },
+    sensors: {
+      cpu_temp_c: jitter(58 + (S.hover > 0 ? 6 : 0), 0.6), cpu_load_pct: jitter(S.hover > 0 ? 82 : 64, 4), mem_pct: jitter(47, 1),
+      battery_v: 19.8 + 5.4 * (S.battery / 100), battery_pct: S.battery,
+      alt_m: S.done ? 0 : jitter(30, 0.3), roll: jitter(0, 2.2), pitch: jitter(-4, 1.5), yaw: S.heading,
+      depth_min_m: inPoly(S.pos, GEO.zone) ? jitter(17, 3) : jitter(29.5, 0.6),
+      gps: S.nav === "GNSS" ? { fix: 6, sats: Math.round(jitter(19, 1)), hdop: jitter(0.7, 0.05) } : { fix: 0, sats: Math.round(rnd(0, 3)), hdop: null }
+    },
+    lora: { rssi: S.loraRssi, snr: S.loraSnr, rx: S.rx, tx: S.tx, loss_pct: S.tx ? (S.lost / S.tx) * 100 : 0, freq_mhz: CONFIG.loraFreqMHz, sf: 9,
+      last_rx_age_s: (S.t - S.lastTelem) / Math.max(S.speed, 1), last_payload: S.lastPayload, hops: S.hops },
+    nodes, survivors: S.survivors, events: S.events
+  };
+}
+
+function drawDemoStatic() {
+  if (!MAP.ok) return;
+  const toLL = (arr) => arr.map(p => enToLL(...p));
+  MAP.zones.clearLayers();
+  L.polygon(toLL(GEO.area), { color: "#ffffff", weight: 2, dashArray: "8 6", fill: false, interactive: false }).addTo(MAP.zones);
+  if (!["nowifi"].includes(SIM.scen)) {
+    const r = SIM.scen === "wifi" ? 330 : GEO.wifiRange;
+    L.circle(enToLL(...GEO.gcs), { radius: r, color: "#1F8A70", weight: 1.5, dashArray: "6 6", fillOpacity: .08 })
+      .bindTooltip(SIM.scen === "wifi" ? "Wi-Fi coverage (router + relay)" : `Wi-Fi coverage (stronger than ${CONFIG.wifiSwitchDbm} dBm)`).addTo(MAP.zones);
+  }
+  L.polyline(toLL(PATH), { color: "#ffffff", weight: 1.5, opacity: .55, dashArray: "2 6", interactive: false }).addTo(MAP.zones);
+  if (SIM.scen === "nogps") {
+    L.polygon(toLL(GEO.area), { color: "#9E2A3A", weight: 0, fillOpacity: .18, interactive: false }).addTo(MAP.zones);
+  }
+  L.polygon(toLL(GEO.zone), { color: "#9E2A3A", weight: 2.5, fillColor: "#9E2A3A", fillOpacity: .35 })
+    .bindTooltip("Collapsed buildings: no GPS, no Wi-Fi", { permanent: true, direction: "center", className: "mk-label" }).addTo(MAP.zones);
+  if (SIM.scen === "nogps") {
+    L.marker(enToLL(-150, 245), { interactive: false, icon: L.divIcon({ className: "mk-label", html: "GPS jammed across the whole area", iconSize: null }) }).addTo(MAP.zones);
+  }
+  L.marker(enToLL(...GEO.launch), { interactive: false, icon: L.divIcon({ className: "mk-label", html: "H · launch", iconSize: null, iconAnchor: [-8, 8] }) }).addTo(MAP.zones);
+}
+function drawDemoDynamic() {
+  if (!MAP.ok) return;
+  const S = SIM;
+  MAP.trueTrail.setLatLngs(S.trailTrue.map(p => enToLL(...p)));
+  const segs = []; let cur = [];
+  S.trailEst.forEach(p => { if (p) cur.push(enToLL(...p)); else if (cur.length) { segs.push(cur); cur = []; } });
+  if (cur.length) segs.push(cur);
+  MAP.estTrail.setLatLngs(segs);
+  // packets in flight
+  MAP.packets.clearLayers();
+  const now = performance.now();
+  S.packets = S.packets.filter(pk => now - pk.t0 < pk.dur);
+  S.packets.forEach(pk => {
+    const f = (now - pk.t0) / pk.dur * (pk.path.length - 1);
+    const i = Math.min(Math.floor(f), pk.path.length - 2), k = f - i;
+    const a = pk.path[i], b = pk.path[i + 1];
+    const p = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+    L.circleMarker(enToLL(...p), { radius: pk.big ? 7 : 4.5, color: "#fff", weight: 2, fillColor: pk.big ? "#E8491D" : "#7C4DCC", fillOpacity: 1, interactive: false }).addTo(MAP.packets);
+  });
+}
+
+let lastUi = 0;
+function loop(ts) {
+  rafId = requestAnimationFrame(loop);
+  if (!SIM) return;
+  const dtReal = Math.min((ts - (lastFrame || ts)) / 1000, 0.1);
+  lastFrame = ts;
+  if (SIM.running) {
+    let dt = dtReal * SIM.speed;
+    while (dt > 0) { const h = Math.min(dt, 0.25); simStep(h); dt -= h; }
+  }
+  drawDemoDynamic();
+  if (ts - lastUi > 250) {      // panels 4x a second
+    lastUi = ts;
+    const s = simToState();
+    pushHist(s);
+    render(s);
+    $("simClock").textContent = `T+${mmss(SIM.t)} · ${(SIM.travelled / 1000).toFixed(2)} km`;
+    $("simProgress").style.width = (100 * SIM.travelled / PATH_LEN).toFixed(1) + "%";
+    if (SIM.done && SIM.running) { SIM.running = false; $("playBtn").textContent = "Play"; }
+  }
+}
+
+function renderScenarioButtons() {
+  $("scenarios").innerHTML = SCENARIOS.map(s => `
+    <button type="button" data-scen="${s.key}" aria-pressed="${SIM && SIM.scen === s.key}">
+      <span class="no">SCENARIO ${s.no}</span><span class="tt">${s.title}</span><span class="ds">${s.desc}</span>
+    </button>`).join("");
+}
+function startDemo(scen) {
+  stopLive();
+  document.body.classList.add("demo-mode");
+  clearMapDynamic(); survSig = ""; lastNav = null; lastLink = null;
+  HIST.lora.length = 0; HIST.wifi.length = 0;
+  SIM = newSim(scen);
+  const sc = SCENARIOS.find(s => s.key === scen);
+  simEvent("info", `Scenario ${sc.no} · ${sc.title}: take-off from launch pad, lawn-mower search at 30 m, strips 40 m apart.`);
+  if (scen === "nowifi") simEvent("warn", "No Wi-Fi network in the area. LoRa is the only link from the start.");
+  if (scen === "nogps") simEvent("info", "GPS will be jammed once the drone leaves the launch pad.");
+  renderScenarioButtons();
+  drawDemoStatic();
+  if (MAP.ok) {
+    MAP.trueTrail.addTo(MAP.trails); MAP.estTrail.addTo(MAP.trails);
+    MAP.m.fitBounds(L.latLngBounds([enToLL(-160, -70), enToLL(160, 250), enToLL(-290, 130)]), { padding: [10, 10] });
+  }
+  $("playBtn").textContent = "Pause";
+  ["jamGpsBtn", "cutWifiBtn"].forEach(id => { $(id).classList.remove("on"); $(id).setAttribute("aria-pressed", "false"); });
+  $("jamGpsBtn").textContent = "Jam GPS now"; $("cutWifiBtn").textContent = "Cut Wi-Fi now";
+  setConn("demo", "Demo: simulated data");
+  $("srcHint").className = "hint";
+  $("srcHint").innerHTML = "Demo running with <b>simulated</b> data. Press <b>Connect</b> to switch back to the Raspberry Pi.";
+  lastFrame = 0;
+  if (!rafId) rafId = requestAnimationFrame(loop);
+}
+function stopDemo() {
+  if (!SIM) return;
+  SIM = null;
+  cancelAnimationFrame(rafId); rafId = null;
+  document.body.classList.remove("demo-mode");
+  clearMapDynamic();
+  if (MAP.ok) MAP.m.removeLayer(MAP.drone);
+  render({ source: "none" });
+  setConn("", "Not connected");
+}
+
+$("demoBtn").addEventListener("click", () => {
+  startDemo(SIM ? SIM.scen : "gps");
+  $("demoPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+$("scenarios").addEventListener("click", (e) => { const b = e.target.closest("button[data-scen]"); if (b) startDemo(b.dataset.scen); });
+$("playBtn").addEventListener("click", () => {
+  if (!SIM) return;
+  if (SIM.done) { startDemo(SIM.scen); return; }
+  SIM.running = !SIM.running;
+  $("playBtn").textContent = SIM.running ? "Pause" : "Play";
+});
+$("restartBtn").addEventListener("click", () => { if (SIM) startDemo(SIM.scen); });
+$("speedSel").addEventListener("change", () => { if (SIM) SIM.speed = +$("speedSel").value; });
+$("jamGpsBtn").addEventListener("click", (e) => {
+  if (!SIM) return;
+  SIM.jamGps = !SIM.jamGps;
+  e.currentTarget.classList.toggle("on", SIM.jamGps); e.currentTarget.setAttribute("aria-pressed", SIM.jamGps);
+  e.currentTarget.textContent = SIM.jamGps ? "Restore GPS" : "Jam GPS now";
+  simEvent(SIM.jamGps ? "warn" : "info", SIM.jamGps ? "Operator test: GPS jammed." : "Operator test: GPS jamming stopped.");
+});
+$("cutWifiBtn").addEventListener("click", (e) => {
+  if (!SIM) return;
+  SIM.cutWifi = !SIM.cutWifi;
+  e.currentTarget.classList.toggle("on", SIM.cutWifi); e.currentTarget.setAttribute("aria-pressed", SIM.cutWifi);
+  e.currentTarget.textContent = SIM.cutWifi ? "Restore Wi-Fi" : "Cut Wi-Fi now";
+  simEvent(SIM.cutWifi ? "warn" : "info", SIM.cutWifi ? "Operator test: Wi-Fi cut." : "Operator test: Wi-Fi restored.");
+});
+$("exitDemoBtn").addEventListener("click", stopDemo);
+$("fitBtn").addEventListener("click", () => {
+  if (!MAP.ok) return;
+  if (SIM) MAP.m.fitBounds(L.latLngBounds([enToLL(-160, -70), enToLL(160, 250), enToLL(-290, 130)]));
+  else {
+    const pts = (STATE.nodes || []).filter(n => num(n.lat)).map(n => [n.lat, n.lon]);
+    if (STATE.drone && num(STATE.drone.lat)) pts.push([STATE.drone.lat, STATE.drone.lon]);
+    if (pts.length) MAP.m.fitBounds(L.latLngBounds(pts).pad(0.3), { maxZoom: 18 });
+  }
+});
+
+/* =====================================================================
+   START
+   ===================================================================== */
+initMap();
+renderScenarioButtons();
+render({ source: "none" });
+(() => {
+  let saved = "";
+  try { saved = localStorage.getItem("saadaxa-src") || ""; } catch (e) {}
+  const start = saved || CONFIG.defaultSource;
+  $("srcInput").value = start;
+  const hash = location.hash.replace("#", "");
+  const scen = SCENARIOS.find(s => s.key === hash);
+  if (hash === "demo" || scen) startDemo(scen ? scen.key : "gps");
+  else if (servedByPi()) startLive(start ? normaliseBase(start) : "");
+  else if (start) startLive(normaliseBase(start));
+})();
+</script>
+</body>
+</html>
